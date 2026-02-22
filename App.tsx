@@ -8,6 +8,8 @@ import StatusChart from './components/StatusChart';
 import EnrollmentTimeChart from './components/EnrollmentTimeChart';
 import EnrollmentTable from './components/EnrollmentTable';
 import AIAssistant from './components/AIAssistant';
+import LoginPage from './components/LoginPage';
+import { getSession, signOut, getUserRole, onAuthStateChange, UserRole } from './services/authService';
 
 // Lazy load heavy components
 const CursosManager = React.lazy(() => import('./components/CursosManager'));
@@ -18,11 +20,18 @@ const TrafegoCalendar = React.lazy(() => import('./components/TrafegoCalendar'))
 const CobrancaManager = React.lazy(() => import('./components/CobrancaManager'));
 const DesempenhoManager = React.lazy(() => import('./components/DesempenhoManager'));
 const ReportAM = React.lazy(() => import('./components/ReportAM'));
+const UsersManager = React.lazy(() => import('./components/UsersManager'));
+const ChangePasswordModal = React.lazy(() => import('./components/ChangePasswordModal'));
 
-type ViewType = 'overview' | 'commercial' | 'enrollments' | 'cursos' | 'turmas' | 'alunos' | 'vendedores' | 'trafego' | 'cobranca' | 'desempenho' | 'report_am';
+type ViewType = 'overview' | 'commercial' | 'enrollments' | 'cursos' | 'turmas' | 'alunos' | 'vendedores' | 'trafego' | 'cobranca' | 'desempenho' | 'report_am' | 'usuarios';
 type DateFilter = 'tudo' | 'ontem' | '7dias' | '14dias' | '30dias' | 'personalizado';
 
 const App: React.FC = () => {
+  // Auth state
+  const [user, setUser] = useState<any | null>(null);
+  const [role, setRole] = useState<UserRole>('auxiliar');
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [allData, setAllData] = useState<EnrollmentDataWithId[]>([]);
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -37,6 +46,35 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [expandedCursos, setExpandedCursos] = useState<string[]>([]);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+
+  // Auth initialization
+  useEffect(() => {
+    getSession().then(session => {
+      const u = session?.user ?? null;
+      const r = getUserRole(u);
+      setUser(u);
+      setRole(r);
+      // Auxiliar começa na aba Matrículas (sem conteúdo financeiro)
+      if (r === 'auxiliar') setActiveTab('enrollments');
+      setAuthLoading(false);
+    });
+    const { data: listener } = onAuthStateChange((u, r) => {
+      setUser(u);
+      setRole(r);
+      if (r === 'auxiliar') setActiveTab('enrollments');
+    });
+    return () => listener?.subscription?.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await signOut();
+    setUser(null);
+    setRole('auxiliar');
+  };
+
+  const isAdmin = role === 'admin' || role === 'master';
+  const isMaster = role === 'master';
 
   const availableClasses = useMemo(() => {
     const classes = Array.from(new Set(allData.map(d => d.Turma)));
@@ -102,11 +140,11 @@ const App: React.FC = () => {
     if (!stats) return [];
     if (dateFilter === 'tudo') return stats.dailyEnrollments;
 
-    const maxDateTime = Math.max(...stats.dailyEnrollments.map(d => d.rawDate.getTime()));
+    const maxDateTime = Math.max(...(stats.dailyEnrollments || []).map(d => d.rawDate.getTime()));
     const refDate = new Date(maxDateTime);
     refDate.setHours(23, 59, 59, 999);
 
-    return stats.dailyEnrollments.filter(d => {
+    return (stats.dailyEnrollments || []).filter(d => {
       const date = d.rawDate;
       const diffDays = (refDate.getTime() - date.getTime()) / (1000 * 3600 * 24);
 
@@ -150,6 +188,20 @@ const App: React.FC = () => {
     );
   };
 
+  // Auth loading spinner
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-zinc-200 border-t-[#E31E24] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Login gate
+  if (!user) {
+    return <LoginPage onLogin={() => { }} />;
+  }
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] flex flex-col md:flex-row font-sans text-[#231F20]">
 
@@ -178,17 +230,29 @@ const App: React.FC = () => {
             <span className="text-[#FFF200] text-[10px] font-black tracking-[0.3em] uppercase">CURSOS</span>
           </div>
           <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 mt-2 italic">DASHBOARD INTELIGENTE</h2>
+          {/* User info + badge */}
+          <div className="mt-4 flex flex-col items-center gap-1 w-full">
+            <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${isAdmin ? 'bg-[#E31E24] text-white' : 'bg-white/10 text-zinc-400'}`}>
+              {isAdmin ? '👑 Admin' : '👤 Auxiliar'}
+            </span>
+            <span className="text-[9px] text-zinc-600 font-semibold truncate max-w-full px-2 text-center">{user?.email}</span>
+          </div>
         </div>
 
         <nav className="flex-grow p-4 space-y-2 overflow-y-auto custom-scrollbar">
-          <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" /></svg>
-            Visão Geral
-          </button>
-          <button onClick={() => setActiveTab('commercial')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'commercial' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-            Painel Comercial
-          </button>
+          {/* Visão Geral e Painel Comercial: somente Admin */}
+          {isAdmin && (
+            <>
+              <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" /></svg>
+                Visão Geral
+              </button>
+              <button onClick={() => setActiveTab('commercial')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'commercial' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                Painel Comercial
+              </button>
+            </>
+          )}
           <button onClick={() => setActiveTab('enrollments')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'enrollments' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
             Matrículas
@@ -222,10 +286,25 @@ const App: React.FC = () => {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
             Desempenho
           </button>
-          <button onClick={() => setActiveTab('report_am')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'report_am' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-            Report AM
-          </button>
+          {isAdmin && (
+            <button onClick={() => setActiveTab('report_am')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'report_am' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              Report AM
+            </button>
+          )}
+
+          {/* Gerenciar Usuários: somente Master */}
+          {isMaster && (
+            <>
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-2 px-4">Sistema</p>
+              </div>
+              <button onClick={() => setActiveTab('usuarios')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'usuarios' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                Usuários
+              </button>
+            </>
+          )}
 
           {Object.keys(cursoTurmaMap).length > 0 && (
             <div className="mt-8 px-4 pt-4 border-t border-white/10 pb-20">
@@ -279,6 +358,29 @@ const App: React.FC = () => {
             </div>
           )}
         </nav>
+        {/* User Info & Settings */}
+        <div className="p-4 border-t border-white/10">
+          {isMaster && (
+            <button
+              onClick={() => setIsChangePasswordOpen(true)}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-zinc-800/50 text-zinc-300 font-bold uppercase tracking-widest text-[9px] rounded-xl hover:bg-zinc-800 hover:text-white transition-all mb-4 group"
+            >
+              <div className="w-6 h-6 rounded-lg bg-zinc-700/50 flex items-center justify-center group-hover:bg-[#E31E24] transition-colors">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+              </div>
+              Trocar Senha
+            </button>
+          )}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:bg-red-900/30 hover:text-[#E31E24] transition-all"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Sair
+          </button>
+        </div>
       </aside>
 
       {/* OVERLAY MOBILE */}
@@ -336,9 +438,10 @@ const App: React.FC = () => {
           {activeTab === 'alunos' && <AlunosManager />}
           {activeTab === 'vendedores' && <VendedoresManager />}
           {activeTab === 'trafego' && <TrafegoCalendar />}
-          {activeTab === 'cobranca' && <CobrancaManager />}
-          {activeTab === 'desempenho' && <DesempenhoManager />}
-          {activeTab === 'report_am' && <ReportAM />}
+          {activeTab === 'cobranca' && <CobrancaManager isAdmin={isAdmin} />}
+          {activeTab === 'desempenho' && <DesempenhoManager isAdmin={isAdmin} />}
+          {activeTab === 'report_am' && isAdmin && <ReportAM />}
+          {activeTab === 'usuarios' && isMaster && <UsersManager />}
         </Suspense>
 
         {/* EMPTY STATE */}
@@ -360,36 +463,50 @@ const App: React.FC = () => {
               </div>
             </header>
 
-            {/* CARDS RESUMO */}
+            {/* CARDS RESUMO — valores financeiros só para admin */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white rounded-[2rem] p-6 shadow-xl border-l-[10px] border-[#E31E24]">
-                <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Total Gerado</p>
-                <div className="flex items-end gap-1">
-                  <span className="text-xs font-black text-[#E31E24] mb-1">R$</span>
-                  <h3 className="text-3xl font-black text-[#231F20] tracking-tighter">{stats.totalSales.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+              {isAdmin ? (
+                <>
+                  <div className="bg-white rounded-[2rem] p-6 shadow-xl border-l-[10px] border-[#E31E24]">
+                    <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Total Gerado</p>
+                    <div className="flex items-end gap-1">
+                      <span className="text-xs font-black text-[#E31E24] mb-1">R$</span>
+                      <h3 className="text-3xl font-black text-[#231F20] tracking-tighter">{stats.totalSales.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-[2rem] p-6 shadow-xl border-l-[10px] border-[#FFF200]">
+                    <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Total Recebido</p>
+                    <div className="flex items-end gap-1">
+                      <span className="text-xs font-black text-green-500 mb-1">R$</span>
+                      <h3 className="text-3xl font-black text-[#231F20] tracking-tighter">{stats.totalReceived.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-[2rem] p-6 shadow-xl border-l-[10px] border-[#231F20]">
+                    <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Matrículas</p>
+                    <div className="flex items-end gap-1">
+                      <h3 className="text-3xl font-black text-[#231F20] tracking-tighter">{stats.totalEnrollments}</h3>
+                      <span className="text-xs font-black text-zinc-400 mb-1 uppercase italic">Unid.</span>
+                    </div>
+                  </div>
+                  <div className="bg-[#E31E24] rounded-[2rem] p-6 shadow-xl text-white transform hover:scale-105 transition-all">
+                    <p className="text-[9px] font-black text-white/60 uppercase tracking-widest mb-1">Ticket Médio</p>
+                    <div className="flex items-end gap-1">
+                      <span className="text-xs font-black text-white mb-1">R$</span>
+                      <h3 className="text-3xl font-black text-white tracking-tighter">{stats.averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="md:col-span-4 bg-white rounded-[2rem] p-6 shadow-xl border-l-[10px] border-[#231F20] flex items-center gap-4">
+                  <div>
+                    <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Matrículas</p>
+                    <div className="flex items-end gap-1">
+                      <h3 className="text-3xl font-black text-[#231F20] tracking-tighter">{stats.totalEnrollments}</h3>
+                      <span className="text-xs font-black text-zinc-400 mb-1 uppercase italic">Unid.</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="bg-white rounded-[2rem] p-6 shadow-xl border-l-[10px] border-[#FFF200]">
-                <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Total Recebido</p>
-                <div className="flex items-end gap-1">
-                  <span className="text-xs font-black text-green-500 mb-1">R$</span>
-                  <h3 className="text-3xl font-black text-[#231F20] tracking-tighter">{stats.totalReceived.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-                </div>
-              </div>
-              <div className="bg-white rounded-[2rem] p-6 shadow-xl border-l-[10px] border-[#231F20]">
-                <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Matrículas</p>
-                <div className="flex items-end gap-1">
-                  <h3 className="text-3xl font-black text-[#231F20] tracking-tighter">{stats.totalEnrollments}</h3>
-                  <span className="text-xs font-black text-zinc-400 mb-1 uppercase italic">Unid.</span>
-                </div>
-              </div>
-              <div className="bg-[#E31E24] rounded-[2rem] p-6 shadow-xl text-white transform hover:scale-105 transition-all">
-                <p className="text-[9px] font-black text-white/60 uppercase tracking-widest mb-1">Ticket Médio</p>
-                <div className="flex items-end gap-1">
-                  <span className="text-xs font-black text-white mb-1">R$</span>
-                  <h3 className="text-3xl font-black text-white tracking-tighter">{stats.averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-                </div>
-              </div>
+              )}
             </div>
 
             {activeTab === 'overview' && (
@@ -400,7 +517,7 @@ const App: React.FC = () => {
                     <span className="w-3 h-6 bg-[#E31E24] rounded-full"></span> Resultados por Pacote
                   </h4>
                   <div className="grid grid-cols-1 gap-6">
-                    {stats.courseMetrics.map((course, idx) => (
+                    {stats.courseMetrics?.map((course, idx) => (
                       <div key={idx} className="bg-zinc-50 rounded-[2rem] p-8 border border-zinc-100 flex flex-col lg:flex-row lg:items-center gap-8 hover:shadow-md transition-all">
                         <div className="lg:w-1/3">
                           <span className="text-[9px] font-black text-[#E31E24] uppercase tracking-widest block mb-1">Nome do Pacote</span>
@@ -469,7 +586,7 @@ const App: React.FC = () => {
                   </div>
                   <div className="bg-white p-10 rounded-[3rem] shadow-sm">
                     <h4 className="text-[10px] font-black text-[#231F20] uppercase tracking-[0.2em] mb-8">Status das Vendas</h4>
-                    <StatusChart data={stats.statusDistribution} />
+                    <StatusChart data={stats.statusDistribution || []} />
                   </div>
                 </div>
               </div>
@@ -479,7 +596,7 @@ const App: React.FC = () => {
               <div className="bg-[#231F20] p-10 rounded-[3rem] shadow-2xl">
                 <h3 className="text-2xl font-black uppercase text-white tracking-tighter italic mb-10">Ranking <span className="text-[#E31E24]">Atendentes (Selecionados)</span></h3>
                 <div className="grid grid-cols-1 gap-4">
-                  {stats.attendantMetrics.map((attendant, index) => (
+                  {stats.attendantMetrics?.map((attendant, index) => (
                     <div key={index} className="bg-white/5 p-8 rounded-[2rem] border border-white/10 flex flex-col lg:flex-row lg:items-center gap-6 group hover:bg-white/10 transition-all">
                       <div className="flex items-center gap-6 lg:w-1/3">
                         <div className="w-12 h-12 flex items-center justify-center bg-[#E31E24] rounded-xl font-black text-white">{index + 1}º</div>
@@ -512,6 +629,11 @@ const App: React.FC = () => {
         )}
       </main>
       <style>{`.custom-scrollbar::-webkit-scrollbar { width: 6px; } .custom-scrollbar::-webkit-scrollbar-track { background: transparent; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #E31E24; border-radius: 10px; }`}</style>
+
+      {/* Modals */}
+      <Suspense fallback={null}>
+        {isChangePasswordOpen && <ChangePasswordModal onClose={() => setIsChangePasswordOpen(false)} />}
+      </Suspense>
     </div>
   );
 };

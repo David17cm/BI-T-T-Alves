@@ -24,9 +24,9 @@ As configurações padrão devem ser:
 
 ## 4. Variáveis de Ambiente (MUITO IMPORTANTE)
 
-Para que o site funcione e conecte ao seu banco de dados Supabase, você **precisa** configurar as seguintes variáveis de ambiente na Vercel.
+Para que o
 
-Vá na seção **"Environment Variables"** antes de clicar em Deploy (ou nas configurações do projeto depois):
+a seção **"Environment Variables"** antes de clicar em Deploy (ou nas configurações do projeto depois):
 
 | Nome da Variável | Descrição | Onde encontrar |
 | :--- | :--- | :--- |
