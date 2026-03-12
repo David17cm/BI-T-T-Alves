@@ -96,6 +96,7 @@ const App: React.FC = () => {
       } else if (r === 'vendedor') {
         setActiveTab(prev => prev === 'overview' ? 'negociacoes' : prev);
       }
+      if (u && location.pathname === '/login') navigate('/', { replace: true });
       setAuthLoading(false);
     });
     const { data: listener } = onAuthStateChange((u, r) => {
@@ -106,9 +107,10 @@ const App: React.FC = () => {
       } else if (r === 'vendedor') {
         setActiveTab(prev => prev === 'overview' ? 'cobranca' : prev);
       }
+      if (u && location.pathname === '/login') navigate('/', { replace: true });
     });
     return () => listener?.subscription?.unsubscribe();
-  }, []);
+  }, [navigate, location.pathname]);
 
   // Auto-logout por inatividade (15 minutos)
   useEffect(() => {
