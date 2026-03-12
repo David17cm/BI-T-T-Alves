@@ -289,7 +289,7 @@ const App: React.FC = () => {
 
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage onLogin={() => { }} />} />
+      <Route path="/login" element={<LoginPage onLogin={() => navigate('/', { replace: true })} />} />
       <Route path="/*" element={<ProtectedRoute />}>
         <Route path="*" element={
           <div className="h-screen w-full overflow-hidden flex flex-col md:flex-row bg-[#F8F9FA] dark:bg-[#0a0a0c] font-sans text-[#231F20] dark:text-[#f2f2f2] transition-colors duration-300">
