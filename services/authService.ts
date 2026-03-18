@@ -54,3 +54,9 @@ export function onAuthStateChange(callback: (user: any | null, role: UserRole) =
     callback(user, getUserRole(user));
   });
 }
+
+export function isJwtExpiredError(error: any): boolean {
+  if (!error) return false;
+  const message = (error.message || String(error)).toLowerCase();
+  return message.includes('jwt expired') || message.includes('invalid jwt');
+}

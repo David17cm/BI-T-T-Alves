@@ -6,33 +6,15 @@ import jsPDF from 'jspdf';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-export interface Professor {
-    id: string;
-    nomeCompleto: string;
-    cursos: string[];
-}
+import { Professor, fetchProfessores, insertProfessor, updateProfessor, deleteProfessor } from '../services/professoresService';
+import { TurmaOrg, DiaSemana, fetchTurmasOrg, upsertTurmasOrg } from '../services/orgTurmasService';
+import { ControleRow, CtrlEntry, CursosDBType, ControleRowsDBType, fetchControleSemanal, upsertControleSemanal } from '../services/controleSemanalService';
 
-export interface TurmaConfig {
-    turmaKey: string;
-    professorId: string;
-    diasSemana: DiaSemana[];
-}
-
-export type DiaSemana = 'SEG' | 'TER' | 'QUA' | 'QUI' | 'SEX' | 'SAB';
 const DIAS: DiaSemana[] = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
 const DIA_LABEL: Record<DiaSemana, string> = { SEG: 'Segunda', TER: 'Terça', QUA: 'Quarta', QUI: 'Quinta', SEX: 'Sexta', SAB: 'Sábado' };
 
-const LS_PROFESSORES = 'tt_professores_v1';
-const LS_TURMAS_ORG = 'tt_turmas_org_v1';
-const LS_CONTROLE = 'tt_controle_v1';
-
 // ── Utils ──────────────────────────────────────────────────────────────────────
 
-function loadFromLS<T>(key: string, fallback: T): T {
-    try { const r = localStorage.getItem(key); return r ? (JSON.parse(r) as T) : fallback; }
-    catch { return fallback; }
-}
-function saveToLS<T>(key: string, v: T) { localStorage.setItem(key, JSON.stringify(v)); }
 function genId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
 
 function getMondayOf(d: Date): Date {
@@ -60,30 +42,29 @@ const DIA_COLOR: Record<DiaSemana, { text: string; border: string; bg: string; b
 // CONTROLE SEMANAL TABLE
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface TurmaOrg { turmaId: number; professorId: string; horario: string; diasSemana: DiaSemana[]; }
-interface CtrlEntry { p: string; f: string; }
-interface ControleRow {
-    id: string;
-    professorId: string;
-    cursoNome: string;
-    totalAlunos: string;
-    dias: Partial<Record<DiaSemana, CtrlEntry>>;
-}
-type CtrlDB_v2 = Record<string, ControleRow[]>;
-type CursosDB = Record<string, Record<string, { matriculados: string; pagos: string }>>;
-const LS_CONTROLE_V2 = 'tt_controle_v2';
-const LS_CONTROLE_CURSOS = 'tt_controle_cursos_v1';
 
 const ControleSemanalTable: React.FC<{ professores: Professor[] }> = ({ professores }) => {
     const [turmas, setTurmas] = useState<Turma[]>([]);
     const [loading, setLoading] = useState(true);
     const [monday, setMonday] = useState<Date>(() => getMondayOf(new Date()));
-    const [db, setDb] = useState<CtrlDB_v2>(() => loadFromLS<CtrlDB_v2>(LS_CONTROLE_V2, {}));
-    const [dbCursos, setDbCursos] = useState<CursosDB>(() => loadFromLS<CursosDB>(LS_CONTROLE_CURSOS, {}));
+    const [db, setDb] = useState<ControleRowsDBType>({});
+    const [dbCursos, setDbCursos] = useState<CursosDBType>({});
     const [saved, setSaved] = useState(false);
     const [semLabel, setSemLabel] = useState('');
 
-    useEffect(() => { fetchTurmas().then(d => { setTurmas(d); setLoading(false); }).catch(() => setLoading(false)); }, []);
+    useEffect(() => { fetchTurmas().then(d => { setTurmas(d); }).catch(() => {}); }, []);
+
+    useEffect(() => {
+        const mISO = isoDate(monday);
+        if (!db[mISO]) {
+            setLoading(true);
+            fetchControleSemanal(mISO).then(({ rows, cursos }) => {
+                setDb(prev => ({ ...prev, [mISO]: rows }));
+                setDbCursos(prev => ({ ...prev, [mISO]: cursos }));
+                setLoading(false);
+            }).catch(() => setLoading(false));
+        }
+    }, [monday]);
 
     const mondayISO = isoDate(monday);
     const getWeek = () => db[mondayISO] || [];
@@ -91,20 +72,17 @@ const ControleSemanalTable: React.FC<{ professores: Professor[] }> = ({ professo
     const addRow = () => {
         const week = [...getWeek()];
         week.push({ id: genId(), professorId: '', cursoNome: '', totalAlunos: '', dias: {} });
-        const next = { ...db, [mondayISO]: week };
-        setDb(next); saveToLS(LS_CONTROLE_V2, next); setSaved(false);
+        setDb({ ...db, [mondayISO]: week }); setSaved(false);
     };
 
     const updateRow = (id: string, patch: Partial<ControleRow>) => {
         const week = getWeek().map(r => r.id === id ? { ...r, ...patch } : r);
-        const next = { ...db, [mondayISO]: week };
-        setDb(next); saveToLS(LS_CONTROLE_V2, next); setSaved(false);
+        setDb({ ...db, [mondayISO]: week }); setSaved(false);
     };
 
     const removeRow = (id: string) => {
         const week = getWeek().filter(r => r.id !== id);
-        const next = { ...db, [mondayISO]: week };
-        setDb(next); saveToLS(LS_CONTROLE_V2, next); setSaved(false);
+        setDb({ ...db, [mondayISO]: week }); setSaved(false);
     };
 
     const setEntry = (id: string, dia: DiaSemana, patch: Partial<CtrlEntry>) => {
@@ -113,16 +91,14 @@ const ControleSemanalTable: React.FC<{ professores: Professor[] }> = ({ professo
             const newDias = { ...r.dias, [dia]: { ...(r.dias[dia] || { p: '', f: '' }), ...patch } };
             return { ...r, dias: newDias };
         });
-        const next = { ...db, [mondayISO]: week };
-        setDb(next); saveToLS(LS_CONTROLE_V2, next); setSaved(false);
+        setDb({ ...db, [mondayISO]: week }); setSaved(false);
     };
 
     const setCD = (curso: string, patch: Partial<{ matriculados: string; pagos: string }>) => {
         const week = { ...(dbCursos[mondayISO] || {}) };
         const cur = week[curso] || { matriculados: '', pagos: '' };
         week[curso] = { ...cur, ...patch };
-        const next = { ...dbCursos, [mondayISO]: week };
-        setDbCursos(next); saveToLS(LS_CONTROLE_CURSOS, next); setSaved(false);
+        setDbCursos({ ...dbCursos, [mondayISO]: week }); setSaved(false);
     };
 
     const cursoMap: Record<string, { p: number; f: number }> = {};
@@ -165,7 +141,12 @@ const ControleSemanalTable: React.FC<{ professores: Professor[] }> = ({ professo
                         </button>
                     </div>
                     <button onClick={() => setMonday(getMondayOf(new Date()))} className="px-4 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 font-black uppercase text-[9px] tracking-widest rounded-xl hover:bg-zinc-200">Hoje</button>
-                    <button onClick={() => { saveToLS(LS_CONTROLE_V2, db); saveToLS(LS_CONTROLE_CURSOS, dbCursos); setSaved(true); setTimeout(() => setSaved(false), 2500); }}
+                    <button onClick={async () => {
+                        try {
+                            await upsertControleSemanal(mondayISO, db[mondayISO] || [], dbCursos[mondayISO] || {});
+                            setSaved(true); setTimeout(() => setSaved(false), 2500);
+                        } catch(e) { alert('Erro ao salvar no banco de dados.'); }
+                    }}
                         className={`flex items-center gap-2 px-5 py-2.5 font-black uppercase text-[10px] tracking-widest rounded-xl transition-all shadow-sm ${saved ? 'bg-green-600 text-white' : 'bg-[#231F20] text-white hover:bg-zinc-700'}`}>
                         {saved ? <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>Salvo!</> : 'Salvar'}
                     </button>
@@ -351,7 +332,8 @@ const ControleSemanalTable: React.FC<{ professores: Professor[] }> = ({ professo
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CadastroProfessores: React.FC<{ cursos: Curso[] }> = ({ cursos }) => {
-    const [professores, setProfessores] = useState<Professor[]>(() => loadFromLS<Professor[]>(LS_PROFESSORES, []));
+    const [professores, setProfessores] = useState<Professor[]>([]);
+    const [loading, setLoading] = useState(true);
     const [modalOpen, setModalOpen] = useState(false);
     const [editing, setEditing] = useState<Professor | null>(null);
     const [nome, setNome] = useState('');
@@ -359,15 +341,32 @@ const CadastroProfessores: React.FC<{ cursos: Curso[] }> = ({ cursos }) => {
     const [search, setSearch] = useState('');
     const [delConfirm, setDelConfirm] = useState<string | null>(null);
 
-    const persist = (list: Professor[]) => { setProfessores(list); saveToLS(LS_PROFESSORES, list); };
+    useEffect(() => { fetchProfessores().then(p => { setProfessores(p); setLoading(false); }).catch(() => setLoading(false)); }, []);
+
     const openNew = () => { setEditing(null); setNome(''); setCursosSel([]); setModalOpen(true); };
     const openEdit = (p: Professor) => { setEditing(p); setNome(p.nomeCompleto); setCursosSel(p.cursos); setModalOpen(true); };
-    const handleSave = (e: React.FormEvent) => {
+    const handleSave = async (e: React.FormEvent) => {
         e.preventDefault(); if (!nome.trim()) return;
-        editing ? persist(professores.map(p => p.id === editing.id ? { ...p, nomeCompleto: nome.trim(), cursos: cursosSel } : p))
-            : persist([...professores, { id: genId(), nomeCompleto: nome.trim(), cursos: cursosSel }]);
-        setModalOpen(false);
+        setLoading(true);
+        try {
+            if (editing) await updateProfessor(editing.id, { nomeCompleto: nome.trim(), cursos: cursosSel });
+            else await insertProfessor({ nomeCompleto: nome.trim(), cursos: cursosSel });
+            setProfessores(await fetchProfessores());
+            setModalOpen(false);
+        } catch (err) { alert('Erro ao salvar professor.'); }
+        setLoading(false);
     };
+    
+    const handleDelete = async (id: string) => {
+        setLoading(true);
+        try {
+            await deleteProfessor(id);
+            setProfessores(await fetchProfessores());
+            setDelConfirm(null);
+        } catch (err) { alert('Erro ao excluir professor.'); }
+        setLoading(false);
+    };
+
     const toggleC = (n: string) => setCursosSel(p => p.includes(n) ? p.filter(c => c !== n) : [...p, n]);
     const filtered = professores.filter(p => p.nomeCompleto.toLowerCase().includes(search.toLowerCase()));
 
@@ -393,7 +392,8 @@ const CadastroProfessores: React.FC<{ cursos: Curso[] }> = ({ cursos }) => {
             </div>
 
             <div className="bg-white dark:bg-zinc-900 transition-colors rounded-[2rem] shadow-sm overflow-hidden">
-                {filtered.length === 0 ? (
+                {loading ? <div className="flex justify-center py-16"><div className="w-10 h-10 border-4 border-zinc-200 dark:border-zinc-700 transition-colors border-t-[#E31E24] rounded-full animate-spin" /></div> :
+                 filtered.length === 0 ? (
                     <div className="py-20 text-center">
                         <p className="text-zinc-400 font-black uppercase tracking-widest text-[10px]">
                             {search ? 'Nenhum professor encontrado.' : 'Nenhum professor cadastrado ainda.'}
@@ -430,7 +430,7 @@ const CadastroProfessores: React.FC<{ cursos: Curso[] }> = ({ cursos }) => {
                                                 </button>
                                                 {delConfirm === p.id ? (
                                                     <div className="flex gap-1">
-                                                        <button onClick={() => { persist(professores.filter(x => x.id !== p.id)); setDelConfirm(null); }} className="p-2 bg-red-600 text-white rounded-lg">
+                                                        <button onClick={() => handleDelete(p.id)} className="p-2 bg-red-600 text-white rounded-lg">
                                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
                                                         </button>
                                                         <button onClick={() => setDelConfirm(null)} className="p-2 bg-zinc-200 rounded-lg text-zinc-600">
@@ -505,15 +505,21 @@ const CadastroProfessores: React.FC<{ cursos: Curso[] }> = ({ cursos }) => {
 const OrganizacaoTurmas: React.FC<{ professores: Professor[] }> = ({ professores }) => {
     const [turmas, setTurmas] = useState<Turma[]>([]);
     const [loading, setLoading] = useState(true);
-    const [config, setConfig] = useState<Record<number, TurmaOrg>>(() => loadFromLS<Record<number, TurmaOrg>>(LS_TURMAS_ORG, {}));
+    const [config, setConfig] = useState<Record<number, TurmaOrg>>({});
     const [saved, setSaved] = useState(false);
     const [search, setSearch] = useState('');
 
-    useEffect(() => { fetchTurmas().then(d => { setTurmas(d); setLoading(false); }).catch(() => setLoading(false)); }, []);
+    useEffect(() => {
+        Promise.all([fetchTurmas(), fetchTurmasOrg()]).then(([t, orgs]) => {
+            setTurmas(t);
+            setConfig(orgs);
+            setLoading(false);
+        }).catch(() => setLoading(false));
+    }, []);
 
     const getOrg = (id: number): TurmaOrg => config[id] ?? { turmaId: id, professorId: '', horario: '', diasSemana: [] };
     const upd = (id: number, patch: Partial<TurmaOrg>) => {
-        setConfig(prev => { const n = { ...prev, [id]: { ...getOrg(id), ...patch } }; saveToLS(LS_TURMAS_ORG, n); return n; });
+        setConfig(prev => ({ ...prev, [id]: { ...getOrg(id), ...patch } }));
         setSaved(false);
     };
     const toggleDia = (id: number, dia: DiaSemana) => {
@@ -534,7 +540,16 @@ const OrganizacaoTurmas: React.FC<{ professores: Professor[] }> = ({ professores
                 <div className="flex items-center gap-3">
                     <input type="text" placeholder="Buscar turma..." value={search} onChange={e => setSearch(e.target.value)}
                         className="px-4 py-2.5 bg-white dark:bg-zinc-900 transition-colors border border-zinc-200 dark:border-zinc-700 transition-colors rounded-xl text-sm font-semibold text-[#231F20] dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-[#E31E24] w-56" />
-                    <button onClick={() => { saveToLS(LS_TURMAS_ORG, config); setSaved(true); setTimeout(() => setSaved(false), 2500); }}
+                    <button onClick={async () => { 
+                        try {
+                            const entries = Object.values(config) as TurmaOrg[];
+                            if (entries.length > 0) await upsertTurmasOrg(entries);
+                            setSaved(true); setTimeout(() => setSaved(false), 2500); 
+                        } catch(e: any) { 
+                            console.error(e);
+                            alert('Erro ao salvar no banco: ' + (e.message || JSON.stringify(e))); 
+                        }
+                    }}
                         className={`flex items-center gap-2 px-5 py-2.5 font-black uppercase tracking-widest text-[10px] rounded-xl transition-all shadow-lg ${saved ? 'bg-green-600 text-white' : 'bg-[#231F20] text-white hover:bg-zinc-700'}`}>
                         {saved ? <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>Salvo!</> : 'Salvar Tudo'}
                     </button>
@@ -610,11 +625,17 @@ const GradeSemanal: React.FC<{ professores: Professor[] }> = ({ professores }) =
     const [loading, setLoading] = useState(true);
     const [filterProf, setFP] = useState('');
     const [exporting, setExp] = useState<'idle' | 'png' | 'pdf'>('idle');
+    const [config, setConfig] = useState<Record<number, TurmaOrg>>({});
     const exportRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => { fetchTurmas().then(d => { setTurmas(d); setLoading(false); }).catch(() => setLoading(false)); }, []);
+    useEffect(() => {
+        Promise.all([fetchTurmas(), fetchTurmasOrg()]).then(([t, orgs]) => {
+            setTurmas(t);
+            setConfig(orgs);
+            setLoading(false);
+        }).catch(() => setLoading(false));
+    }, []);
 
-    const config = loadFromLS<Record<number, TurmaOrg>>(LS_TURMAS_ORG, {});
     const grade: Record<DiaSemana, GradeItem[]> = DIAS.reduce((a, d) => ({ ...a, [d]: [] }), {} as Record<DiaSemana, GradeItem[]>);
     turmas.forEach(t => { const o = config[t.id]; if (!o) return; o.diasSemana.forEach(d => { const prof = professores.find(p => p.id === o.professorId); if (filterProf && prof?.id !== filterProf) return; grade[d].push({ turma: t, org: o, prof }); }); });
     DIAS.forEach(d => { grade[d].sort((a, b) => { if (!a.org.horario && !b.org.horario) return 0; if (!a.org.horario) return 1; if (!b.org.horario) return -1; return a.org.horario.localeCompare(b.org.horario); }); });
@@ -730,20 +751,191 @@ const TOP_TABS: { id: TopTab; label: string; icon: React.ReactNode }[] = [
 const ControleSemanManager: React.FC = () => {
     const [activeTab, setActiveTab] = useState<TopTab>('pedagogico');
     const [cursos, setCursos] = useState<Curso[]>([]);
-    const [professores, setProfessores] = useState<Professor[]>(() => loadFromLS<Professor[]>(LS_PROFESSORES, []));
+    const [professores, setProfessores] = useState<Professor[]>([]);
+    const [hasOldData, setHasOldData] = useState(false);
+    const [migrating, setMigrating] = useState(false);
 
-    useEffect(() => { setProfessores(loadFromLS<Professor[]>(LS_PROFESSORES, [])); }, [activeTab]);
+    useEffect(() => { fetchProfessores().then(setProfessores).catch(() => {}); }, [activeTab]);
     useEffect(() => { fetchCursos().then(setCursos).catch(() => { }); }, []);
+    
+    useEffect(() => {
+        const p = localStorage.getItem('tt_professores_v1');
+        const o = localStorage.getItem('tt_turmas_org_v1');
+        const c = localStorage.getItem('tt_controle_v2');
+        if ((p && p !== '[]') || (o && o !== '{}') || (c && c !== '{}')) setHasOldData(true);
+    }, []);
+
+    const runMigration = async () => {
+        if (!confirm('Deseja migrar os dados antigos do seu navegador para o banco de dados? Apenas faça isso se tiver certeza, para não duplicar informações no banco.')) return;
+        setMigrating(true);
+        try {
+            const pStore = JSON.parse(localStorage.getItem('tt_professores_v1') || '[]');
+            const idMap: Record<string, string> = {};
+            
+            const existingProfs = await fetchProfessores();
+            
+            for (const prof of pStore) {
+                const exist = existingProfs.find(x => x.nomeCompleto.toLowerCase() === prof.nomeCompleto.toLowerCase());
+                if (exist) { idMap[prof.id] = exist.id; }
+                else {
+                    const newProf = await insertProfessor({ nomeCompleto: prof.nomeCompleto, cursos: prof.cursos });
+                    idMap[prof.id] = newProf.id;
+                }
+            }
+
+            const oStore = JSON.parse(localStorage.getItem('tt_turmas_org_v1') || '{}');
+            const orgs = Object.values(oStore) as any[];
+            if (orgs.length > 0) {
+                const mappedOrgs = orgs.map(o => ({
+                    turmaId: o.turmaId,
+                    professorId: idMap[o.professorId] || o.professorId,
+                    horario: o.horario,
+                    diasSemana: o.diasSemana
+                }));
+                await upsertTurmasOrg(mappedOrgs);
+            }
+
+            const cStore = JSON.parse(localStorage.getItem('tt_controle_v2') || '{}');
+            const ccStore = JSON.parse(localStorage.getItem('tt_controle_cursos_v1') || '{}');
+            
+            for (const week of Object.keys(cStore)) {
+                const oldRows = cStore[week] || [];
+                const mappedRows = oldRows.map((r: any) => ({ ...r, professorId: idMap[r.professorId] || r.professorId }));
+                await upsertControleSemanal(week, mappedRows, ccStore[week] || {});
+            }
+
+            localStorage.removeItem('tt_professores_v1');
+            localStorage.removeItem('tt_turmas_org_v1');
+            localStorage.removeItem('tt_controle_v2');
+            localStorage.removeItem('tt_controle_cursos_v1');
+            setHasOldData(false);
+            alert('Migração concluída com sucesso! A página será recarregada.');
+            window.location.reload();
+        } catch(e) { 
+            console.error(e);
+            alert('Erro durante a migração dos dados antigos.'); 
+        }
+        setMigrating(false);
+    };
 
     return (
         <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
-            <header className="flex items-center gap-3">
+            <header className="flex flex-col md:flex-row md:items-center gap-4 justify-between">
                 <h2 className="text-4xl font-black text-[#231F20] dark:text-zinc-100 uppercase tracking-tighter italic leading-none">
                     Controle <span className="text-[#E31E24]">Semanal</span>
                 </h2>
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-400 text-[#231F20] dark:text-zinc-100 text-[9px] font-black uppercase tracking-widest rounded-full">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg> Dev Only
-                </span>
+                
+                <div className="flex gap-2">
+                    <button onClick={async () => {
+                        if (!confirm('Executar a restauração via imagem? Isso vai criar professores e a grade.')) return;
+                        setMigrating(true);
+                        try {
+                            const professoresToCreate = [
+                                { nomeCompleto: 'Robert', cursos: ['Informática'] },
+                                { nomeCompleto: 'André', cursos: ['Recepcionista', 'Aux Administrativo', 'Operador de Caixa'] },
+                                { nomeCompleto: 'Clara', cursos: ['Inglês'] },
+                                { nomeCompleto: 'Jonathan', cursos: ['Informática'] },
+                                { nomeCompleto: 'Gabriel', cursos: ['Atendente de Farmácia'] },
+                                { nomeCompleto: 'Ítalo', cursos: ['Aux de Vet'] },
+                                { nomeCompleto: 'Vanessa', cursos: ['Aux de Vet'] },
+                                { nomeCompleto: 'Dayse', cursos: ['Aux Administrativo', 'Sec Escolar'] },
+                                { nomeCompleto: 'Andressa', cursos: ['Recepcionista', 'Cuidador de Idosos'] },
+                                { nomeCompleto: 'Kassia', cursos: ['Atendente de Farmácia'] }
+                            ];
+                            const configuracoes = [
+                                { turmaId: 17, p: 'Robert', horario: '08:00', diasSemana: ['SEG'] as DiaSemana[] },
+                                { turmaId: 43, p: 'André', horario: '08:00', diasSemana: ['SEG'] as DiaSemana[] },
+                                { turmaId: 4,  p: 'Jonathan', horario: '16:00', diasSemana: ['SEG'] as DiaSemana[] },
+                                { turmaId: 18, p: 'Jonathan', horario: '18:00', diasSemana: ['SEG'] as DiaSemana[] },
+                                { turmaId: 6,  p: 'Jonathan', horario: '20:00', diasSemana: ['SEG'] as DiaSemana[] },
+                                { turmaId: 1,  p: 'Robert', horario: '09:30', diasSemana: ['TER'] as DiaSemana[] },
+                                { turmaId: 8,  p: 'Jonathan', horario: '15:00', diasSemana: ['TER'] as DiaSemana[] },
+                                { turmaId: 44, p: 'Andressa', horario: '19:00', diasSemana: ['TER'] as DiaSemana[] },
+                                { turmaId: 33, p: 'Kassia', horario: '19:00', diasSemana: ['TER'] as DiaSemana[] },
+                                { turmaId: 19, p: 'Robert', horario: '08:00', diasSemana: ['QUA'] as DiaSemana[] },
+                                { turmaId: 36, p: 'André', horario: '08:00', diasSemana: ['QUA'] as DiaSemana[] },
+                                { turmaId: 2,  p: 'Robert', horario: '10:00', diasSemana: ['QUA'] as DiaSemana[] },
+                                { turmaId: 9,  p: 'Robert', horario: '14:00', diasSemana: ['QUA'] as DiaSemana[] },
+                                { turmaId: 11, p: 'Jonathan', horario: '16:00', diasSemana: ['QUA'] as DiaSemana[] },
+                                { turmaId: 37, p: 'Dayse', horario: '19:00', diasSemana: ['QUA'] as DiaSemana[] },
+                                { turmaId: 13, p: 'Jonathan', horario: '20:00', diasSemana: ['QUA'] as DiaSemana[] },
+                                { turmaId: 45, p: 'Clara', horario: '15:00', diasSemana: ['SEG', 'QUA'] as DiaSemana[] },
+                                { turmaId: 47, p: 'Clara', horario: '09:00', diasSemana: ['TER', 'SEX'] as DiaSemana[] },
+                                { turmaId: 49, p: 'Clara', horario: '19:00', diasSemana: ['QUA', 'SEX'] as DiaSemana[] },
+                                { turmaId: 21, p: 'Robert', horario: '07:30', diasSemana: ['QUI'] as DiaSemana[] },
+                                { turmaId: 3,  p: 'Robert', horario: '09:30', diasSemana: ['QUI'] as DiaSemana[] },
+                                { turmaId: 10, p: 'Robert', horario: '13:00', diasSemana: ['QUI'] as DiaSemana[] },
+                                { turmaId: 12, p: 'Jonathan', horario: '15:00', diasSemana: ['QUI'] as DiaSemana[] },
+                                { turmaId: 31, p: 'André', horario: '15:00', diasSemana: ['QUI'] as DiaSemana[] },
+                                { turmaId: 15, p: 'Jonathan', horario: '17:00', diasSemana: ['QUI'] as DiaSemana[] },
+                                { turmaId: 48, p: 'Dayse', horario: '19:00', diasSemana: ['QUI'] as DiaSemana[] },
+                                { turmaId: 16, p: 'Jonathan', horario: '19:00', diasSemana: ['QUI'] as DiaSemana[] },
+                                { turmaId: 22, p: 'Robert', horario: '08:00', diasSemana: ['SEX'] as DiaSemana[] },
+                                { turmaId: 14, p: 'Jonathan', horario: '10:00', diasSemana: ['SEX'] as DiaSemana[] },
+                                { turmaId: 5,  p: 'Jonathan', horario: '16:00', diasSemana: ['SEX'] as DiaSemana[] },
+                                { turmaId: 20, p: 'Jonathan', horario: '18:00', diasSemana: ['SEX'] as DiaSemana[] },
+                                { turmaId: 39, p: 'Vanessa', horario: '19:00', diasSemana: ['SEX'] as DiaSemana[] },
+                                { turmaId: 24, p: 'Robert', horario: '07:00', diasSemana: ['SAB'] as DiaSemana[] },
+                                { turmaId: 40, p: 'Ítalo', horario: '07:00', diasSemana: ['SAB'] as DiaSemana[] },
+                                { turmaId: 25, p: 'Robert', horario: '09:00', diasSemana: ['SAB'] as DiaSemana[] },
+                                { turmaId: 34, p: 'Gabriel', horario: '09:00', diasSemana: ['SAB'] as DiaSemana[] },
+                                { turmaId: 26, p: 'Robert', horario: '11:00', diasSemana: ['SAB'] as DiaSemana[] },
+                                { turmaId: 27, p: 'Jonathan', horario: '14:00', diasSemana: ['SAB'] as DiaSemana[] },
+                                { turmaId: 32, p: 'André', horario: '14:00', diasSemana: ['SAB'] as DiaSemana[] },
+                                { turmaId: 28, p: 'Jonathan', horario: '16:00', diasSemana: ['SAB'] as DiaSemana[] },
+                                { turmaId: 35, p: 'Gabriel', horario: '16:00', diasSemana: ['SAB'] as DiaSemana[] },
+                                { turmaId: 41, p: 'Vanessa', horario: '17:00', diasSemana: ['SAB'] as DiaSemana[] },
+                                { turmaId: 29, p: 'Jonathan', horario: '18:00', diasSemana: ['SAB'] as DiaSemana[] },
+                                { turmaId: 38, p: 'André', horario: '18:00', diasSemana: ['SAB'] as DiaSemana[] },
+                            ];
+                            
+                            const idMap: Record<string, string> = {};
+                            const [existingProfs, currentTurmas] = await Promise.all([
+                                fetchProfessores(),
+                                fetchTurmas()
+                            ]);
+                            
+                            const validTurmaIds = new Set(currentTurmas.map(t => t.id));
+
+                            for (const prof of professoresToCreate) {
+                                const exist = existingProfs.find(x => x.nomeCompleto.toLowerCase() === prof.nomeCompleto.toLowerCase());
+                                if (exist) { idMap[prof.nomeCompleto] = exist.id; }
+                                else {
+                                    const newProf = await insertProfessor(prof);
+                                    idMap[prof.nomeCompleto] = newProf.id;
+                                }
+                            }
+                            const mappedOrgs = configuracoes
+                                .filter(o => validTurmaIds.has(o.turmaId))
+                                .map(o => ({
+                                    turmaId: o.turmaId,
+                                    professorId: idMap[o.p] || '',
+                                    horario: o.horario,
+                                    diasSemana: o.diasSemana
+                                })).filter(o => o.professorId !== '');
+
+                            if (mappedOrgs.length > 0) {
+                                await upsertTurmasOrg(mappedOrgs);
+                            }
+                            alert('Grade restaurada da imagem! Algumas turmas que não existem mais no banco foram ignoradas.');
+                            window.location.reload();
+                        } catch(e: any) { 
+                            console.error(e);
+                            alert('Erro ao restaurar: ' + (e.message || JSON.stringify(e))); 
+                        }
+                        setMigrating(false);
+                    }} disabled={migrating} className="px-4 py-2 bg-blue-100 text-blue-700 font-black uppercase text-[10px] rounded-xl hover:bg-blue-200">
+                        {migrating ? '...' : 'Restaurar da Imagem'}
+                    </button>
+                    
+                    {hasOldData && (
+                        <button onClick={runMigration} disabled={migrating}
+                            className="flex flex-1 items-center gap-2 px-4 py-2 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors border border-amber-300 dark:border-amber-700 disabled:opacity-50">
+                            {migrating ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg> : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>}
+                            {migrating ? 'Migrando...' : 'Recuperar Dados Antigos'}
+                        </button>
+                    )}
+                </div>
             </header>
 
             <div className="flex flex-wrap gap-2 bg-white dark:bg-zinc-900 transition-colors p-2 rounded-2xl shadow-sm border border-zinc-100 dark:border-zinc-800 transition-colors">

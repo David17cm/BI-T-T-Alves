@@ -10,8 +10,8 @@ import EnrollmentTable from './components/EnrollmentTable';
 import AIAssistant from './components/AIAssistant';
 import LoginPage from './components/LoginPage';
 import SkeletonLoading from './components/SkeletonLoading';
-import { getSession, signOut, getUserRole, onAuthStateChange, UserRole } from './services/authService';
-import { Toaster } from 'sonner';
+import { getSession, signOut, getUserRole, onAuthStateChange, UserRole, isJwtExpiredError } from './services/authService';
+import { Toaster, toast } from 'sonner';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -27,9 +27,7 @@ const ReportAM = React.lazy(() => import('./components/ReportAM'));
 const UsersManager = React.lazy(() => import('./components/UsersManager'));
 const ChangePasswordModal = React.lazy(() => import('./components/ChangePasswordModal'));
 const AuditLog = React.lazy(() => import('./components/AuditLog'));
-const ControleSemanManager = import.meta.env.DEV
-  ? React.lazy(() => import('./components/ControleSemanManager'))
-  : null;
+const ControleSemanManager = React.lazy(() => import('./components/ControleSemanManager'));
 
 const NegociacoesManager = React.lazy(() => import('./components/NegociacoesManager'));
 
@@ -174,7 +172,18 @@ const App: React.FC = () => {
 
       setAllData(allRows);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar dados do Supabase.');
+      if (isJwtExpiredError(err)) {
+        toast.error('Sua sessão expirou. Por favor, recarregue a página ou faça login novamente.', {
+          duration: Infinity,
+          action: {
+            label: 'Recarregar',
+            onClick: () => window.location.reload()
+          }
+        });
+        setError('Sessão expirada. Recarregue a página.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Erro ao carregar dados do Supabase.');
+      }
     } finally {
       setLoading(false);
     }
@@ -407,13 +416,13 @@ const App: React.FC = () => {
             </>
           )}
 
-          {/* Controle Semanal: somente DEV + Master */}
-          {import.meta.env.DEV && isMaster && !isVendedor && (
+          {/* Controle Semanal: somente Admin/Master */}
+          {isAdmin && (
             <>
               <div className="mt-4 pt-4 border-t border-white/10">
-                <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-2 px-4">🔧 Em Desenvolvimento</p>
+                <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-2 px-4">Operacional</p>
               </div>
-              <button onClick={() => setActiveTab('controle_semanal')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'controle_semanal' ? 'bg-amber-500 text-white shadow-lg' : 'text-amber-400/70 hover:bg-amber-500/10 hover:text-amber-400'}`}>
+              <button onClick={() => setActiveTab('controle_semanal')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'controle_semanal' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white dark:bg-zinc-900 transition-colors/5 hover:text-white'}`}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                 Controle Semanal
               </button>
@@ -582,7 +591,7 @@ const App: React.FC = () => {
           {activeTab === 'report_am' && isAdmin && <ReportAM />}
           {activeTab === 'usuarios' && isMaster && <UsersManager />}
           {activeTab === 'auditoria' && isMaster && <AuditLog />}
-          {activeTab === 'controle_semanal' && import.meta.env.DEV && isMaster && ControleSemanManager && <ControleSemanManager />}
+          {activeTab === 'controle_semanal' && isAdmin && <ControleSemanManager />}
           {activeTab === 'negociacoes' && (isMaster || isVendedor) && <NegociacoesManager />}
         </Suspense>
 
