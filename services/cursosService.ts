@@ -6,6 +6,8 @@ export interface Curso {
     descricao: string;
     valor: number;
     valor_rematricula: number;
+    modulos?: string;
+    carga_horaria?: string;
     created_at: string;
     alunos_count?: number;
 }

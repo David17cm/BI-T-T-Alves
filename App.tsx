@@ -28,10 +28,10 @@ const UsersManager = React.lazy(() => import('./components/UsersManager'));
 const ChangePasswordModal = React.lazy(() => import('./components/ChangePasswordModal'));
 const AuditLog = React.lazy(() => import('./components/AuditLog'));
 const ControleSemanManager = React.lazy(() => import('./components/ControleSemanManager'));
-
+const PedagogoManager = React.lazy(() => import('./components/PedagogoManager'));
 const NegociacoesManager = React.lazy(() => import('./components/NegociacoesManager'));
 
-type ViewType = 'overview' | 'commercial' | 'enrollments' | 'cursos' | 'turmas' | 'alunos' | 'vendedores' | 'trafego' | 'cobranca' | 'desempenho' | 'report_am' | 'usuarios' | 'auditoria' | 'controle_semanal' | 'negociacoes';
+type ViewType = 'overview' | 'commercial' | 'enrollments' | 'alunos' | 'cursos' | 'pedagogo' | 'turmas' | 'vendedores' | 'trafego' | 'cobranca' | 'desempenho' | 'report_am' | 'usuarios' | 'auditoria' | 'controle_semanal' | 'negociacoes';
 type DateFilter = 'tudo' | 'ontem' | '7dias' | '14dias' | '30dias' | 'personalizado';
 
 const App: React.FC = () => {
@@ -358,11 +358,20 @@ const App: React.FC = () => {
                 Matrículas
               </button>
 
+              <button onClick={() => setActiveTab('alunos')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'alunos' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white dark:bg-zinc-900 transition-colors/5 hover:text-white'}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                Alunos
+              </button>
+
               <div className="mt-4 pt-4 border-t border-white/10">
                 <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-2 px-4">Cadastros</p>
               </div>
-              <button onClick={() => setActiveTab('cursos')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'cursos' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white dark:bg-zinc-900 transition-colors/5 hover:text-white'}`}>
+              <button onClick={() => setActiveTab('pedagogo')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'pedagogo' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white dark:bg-zinc-900 transition-colors/5 hover:text-white'}`}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                Pedagogo
+              </button>
+              <button onClick={() => setActiveTab('cursos')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'cursos' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white dark:bg-zinc-900 transition-colors/5 hover:text-white'}`}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                 Cursos
               </button>
               <button onClick={() => setActiveTab('turmas')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'turmas' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white dark:bg-zinc-900 transition-colors/5 hover:text-white'}`}>
@@ -582,6 +591,7 @@ const App: React.FC = () => {
         <Suspense fallback={<SkeletonLoading />}>
           {activeTab === 'enrollments' && !loading && !error && <EnrollmentTable data={allData} onDataChanged={loadData} isAdmin={isAdmin} />}
           {activeTab === 'cursos' && <CursosManager enrollments={allData} onDataChanged={loadData} />}
+          {activeTab === 'pedagogo' && <PedagogoManager enrollments={allData} onDataChanged={loadData} />}
           {activeTab === 'turmas' && <TurmasManager />}
           {activeTab === 'alunos' && <AlunosManager />}
           {activeTab === 'vendedores' && <VendedoresManager />}

@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
 
-const supabaseUrl = 'https://hhgsjzzkvewolzveipcf.supabase.co';
-const serviceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhoZ3NqenprdmV3b2x6dmVpcGNmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDY2OTI3OCwiZXhwIjoyMDg2MjQ1Mjc4fQ.2FZgG6udqKy-YF2izvIcICxauhVVvxCppihEr-E4mSg';
+// Ler variáveis do .env atual
+const envFile = fs.readFileSync('.env', 'utf-8');
+const supabaseUrl = envFile.match(/VITE_SUPABASE_URL=(.*)/)[1].trim();
+const serviceRoleKey = envFile.match(/VITE_SUPABASE_SERVICE_KEY=(.*)/)[1].trim();
 
 const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false }
@@ -20,7 +23,28 @@ async function run() {
         });
         console.log('✅ masterbialves atualizado para role=master');
     } else {
-        console.log('⚠️  masterbialves não encontrado');
+        console.log('👤 Criando novo masterbialves...');
+        const { data: newMaster, error: masterError } = await admin.auth.admin.createUser({
+            email: 'david.oficialstm@gmail.com',
+            password: '22cm',
+            email_confirm: true,
+            user_metadata: { role: 'master' }
+        });
+
+        if (masterError) {
+            console.error('❌ Erro ao criar master:', masterError.message);
+        } else {
+            const { error: insertError } = await admin.from('app_usuarios').upsert({
+                username: 'masterbialves',
+                email: 'david.oficialstm@gmail.com',
+                role: 'master',
+                ativo: true,
+                auth_user_id: newMaster.user.id
+            }, { onConflict: 'username' });
+
+            if (insertError) console.error('❌ Erro ao inserir na tabela:', insertError.message);
+            else console.log('✅ masterbialves criado com sucesso!');
+        }
     }
 
     // Delete broken test user if exists

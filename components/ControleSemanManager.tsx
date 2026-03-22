@@ -43,7 +43,7 @@ const DIA_COLOR: Record<DiaSemana, { text: string; border: string; bg: string; b
 // ─────────────────────────────────────────────────────────────────────────────
 
 
-const ControleSemanalTable: React.FC<{ professores: Professor[] }> = ({ professores }) => {
+const ControleSemanalTable: React.FC<{ professores: Professor[], cursos: Curso[] }> = ({ professores, cursos }) => {
     const [turmas, setTurmas] = useState<Turma[]>([]);
     const [loading, setLoading] = useState(true);
     const [monday, setMonday] = useState<Date>(() => getMondayOf(new Date()));
@@ -73,6 +73,27 @@ const ControleSemanalTable: React.FC<{ professores: Professor[] }> = ({ professo
         const week = [...getWeek()];
         week.push({ id: genId(), professorId: '', cursoNome: '', totalAlunos: '', dias: {} });
         setDb({ ...db, [mondayISO]: week }); setSaved(false);
+    };
+
+    const addProfessorRows = (profId: string) => {
+        const prof = professores.find(p => p.id === profId);
+        if (!prof) return;
+        
+        const week = [...getWeek()];
+        const existingCursos = new Set(week.filter(r => r.professorId === profId).map(r => r.cursoNome));
+        
+        let added = false;
+        (prof.cursos || []).forEach(curso => {
+            if (!existingCursos.has(curso)) {
+                week.push({ id: genId(), professorId: profId, cursoNome: curso, totalAlunos: '', dias: {} });
+                added = true;
+            }
+        });
+        
+        if (added) {
+            setDb({ ...db, [mondayISO]: week });
+            setSaved(false);
+        }
     };
 
     const updateRow = (id: string, patch: Partial<ControleRow>) => {
@@ -192,7 +213,22 @@ const ControleSemanalTable: React.FC<{ professores: Professor[] }> = ({ professo
                                                         <select value={row.cursoNome} onChange={e => updateRow(row.id, { cursoNome: e.target.value })}
                                                             className="w-full text-[10px] font-bold text-zinc-500 bg-zinc-50 dark:bg-zinc-950/50 transition-colors border border-zinc-200 dark:border-zinc-700 transition-colors rounded p-1.5 uppercase focus:outline-none focus:ring-1 focus:ring-[#E31E24]">
                                                             <option value="">Selecione o Curso</option>
-                                                            {uniqueCursosDisp.map((c: any) => <option key={c} value={c}>{c}</option>)}
+                                                            {(() => {
+                                                                const prof = professores.find(p => p.id === row.professorId);
+                                                                const options = (prof && prof.cursos && prof.cursos.length > 0) 
+                                                                    ? Array.from(new Set([...prof.cursos, ...uniqueCursosDisp])) 
+                                                                    : uniqueCursosDisp;
+                                                                
+                                                                return options.map((c: any) => (
+                                                                    <option 
+                                                                        key={c} 
+                                                                        value={c}
+                                                                        className={prof?.cursos?.includes(c) ? 'font-bold text-[#E31E24]' : ''}
+                                                                    >
+                                                                        {prof?.cursos?.includes(c) ? `⭐ ${c}` : c}
+                                                                    </option>
+                                                                ));
+                                                            })()}
                                                         </select>
                                                         <button onClick={() => removeRow(row.id)} className="text-[9px] font-bold text-red-500 hover:text-red-700 text-left w-fit self-end mr-1 mt-0.5 uppercase tracking-widest">Remover</button>
                                                     </div>
@@ -215,8 +251,20 @@ const ControleSemanalTable: React.FC<{ professores: Professor[] }> = ({ professo
                                         );
                                     })}
                                     <tr className="bg-zinc-50 dark:bg-zinc-950/50 transition-colors border-t border-zinc-100 dark:border-zinc-800 transition-colors">
-                                        <td colSpan={16} className="px-5 py-3 text-left">
-                                            <button onClick={addRow} className="px-5 py-2.5 bg-zinc-200 text-zinc-800 hover:bg-zinc-300 transition-colors rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm">+ Adicionar Linha</button>
+                                        <td colSpan={16} className="px-5 py-4">
+                                            <div className="flex flex-col md:flex-row md:items-center gap-4">
+                                                <button onClick={addRow} className="px-5 py-2.5 bg-zinc-200 text-zinc-800 hover:bg-zinc-300 transition-colors rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm">+ Linha Vazia</button>
+                                                <div className="flex items-center gap-3 bg-white dark:bg-zinc-900 p-2 rounded-2xl border border-zinc-100 dark:border-zinc-800 shadow-sm">
+                                                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-2">Adicionar Professor:</span>
+                                                    <select 
+                                                        onChange={e => { if (e.target.value) { addProfessorRows(e.target.value); e.target.value = ''; } }}
+                                                        className="bg-transparent text-[10px] font-black uppercase text-[#231F20] dark:text-zinc-100 focus:outline-none"
+                                                    >
+                                                        <option value="">Selecionar...</option>
+                                                        {professores.map(p => <option key={p.id} value={p.id}>{p.nomeCompleto}</option>)}
+                                                    </select>
+                                                </div>
+                                            </div>
                                         </td>
                                     </tr>
                                     {getWeek().length > 0 && (() => {
@@ -950,7 +998,7 @@ const ControleSemanManager: React.FC = () => {
 
             <div className="min-h-[400px]">
                 {activeTab === 'pedagogico' && <PedagogicoManager cursos={cursos} professores={professores} />}
-                {activeTab === 'controle' && <ControleSemanalTable professores={professores} />}
+                {activeTab === 'controle' && <ControleSemanalTable professores={professores} cursos={cursos} />}
             </div>
         </div>
     );
