@@ -20,7 +20,7 @@
     "jsx": "react-jsx",
     "paths": {
       "@/*": [
-        "./*"
+        "./src/*"
       ]
     },
     "allowImportingTsExtensions": true,
@@ -30,5 +30,8 @@
     "dist",
     "node_modules",
     "supabase"
+  ],
+  "include": [
+    "src"
   ]
 }

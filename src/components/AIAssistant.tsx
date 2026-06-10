@@ -17,6 +17,9 @@ const AIAssistant: React.FC<Props> = ({ isOpen, onClose, stats }) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
+    const [apiKey, setApiKey] = useState(() => localStorage.getItem('GEMINI_API_KEY') || '');
+    const [showConfig, setShowConfig] = useState(false);
+    const [tempKey, setTempKey] = useState(apiKey);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const scrollToBottom = () => {
@@ -56,7 +59,9 @@ const AIAssistant: React.FC<Props> = ({ isOpen, onClose, stats }) => {
                 .filter(m => m.text !== 'Olá! Sou seu assistente de BI. Posso analisar seus dados de vendas, matrículas e tráfego. Como posso ajudar hoje?')
                 .map(m => ({ role: m.role, text: m.text }));
 
-            const responseText = await sendMessageToAI(history, context, userMsg);
+            // Envia a mensagem usando a chave configurada
+            const fullPrompt = `Contexto dos Dados:\n${context}\n\nPergunta do Usuário: ${userMsg}\n\nResponda como um analista de BI amigável da BI Alves.`;
+            const responseText = await sendMessageToAI(history, context, apiKey ? fullPrompt : userMsg, apiKey);
             setMessages(prev => [...prev, { role: 'model', text: responseText }]);
         } catch (error: any) {
             setMessages(prev => [...prev, { role: 'model', text: `Erro: ${error.message}` }]);
@@ -79,14 +84,49 @@ const AIAssistant: React.FC<Props> = ({ isOpen, onClose, stats }) => {
                             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                         </div>
                         <div>
-                            <h3 className="font-black uppercase tracking-widest text-sm">IA Analyst</h3>
+                            <div className="flex items-center gap-2">
+                                <h3 className="font-black uppercase tracking-widest text-sm">IA Analyst</h3>
+                                <div className={`w-2 h-2 rounded-full ${apiKey ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} title={apiKey ? 'API Key Configurada' : 'API Key Pendente'} />
+                            </div>
                             <p className="text-[9px] text-zinc-400">Powered by Gemini</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white dark:bg-zinc-900 transition-colors/10 rounded-lg text-zinc-400 hover:text-white transition-all">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+                    <div className="flex items-center gap-1">
+                        <button onClick={() => { setTempKey(apiKey); setShowConfig(!showConfig); }} className={`p-2 transition-colors rounded-lg hover:text-white ${showConfig ? 'text-[#E31E24]' : 'text-zinc-400'}`} title="Configurar API Key">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        </button>
+                        <button onClick={onClose} className="p-2 hover:bg-white/10 transition-colors rounded-lg text-zinc-400 hover:text-white">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
                 </div>
+
+                {/* API Key Config Overlay */}
+                {showConfig && (
+                    <div className="bg-[#1a1a1c] border-b border-white/10 p-4 animate-in slide-in-from-top duration-300">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-[#E31E24] mb-2 block">Google Gemini API Key</label>
+                        <div className="flex gap-2">
+                            <input 
+                                type="password" 
+                                value={tempKey} 
+                                onChange={e => setTempKey(e.target.value)}
+                                placeholder="Pule aqui sua chave..."
+                                className="flex-grow bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#E31E24]"
+                            />
+                            <button 
+                                onClick={() => {
+                                    localStorage.setItem('GEMINI_API_KEY', tempKey);
+                                    setApiKey(tempKey);
+                                    setShowConfig(false);
+                                }}
+                                className="bg-[#E31E24] text-white px-3 py-2 rounded-lg text-[10px] font-black uppercase hover:bg-red-700 transition-all"
+                            >
+                                Salvar
+                            </button>
+                        </div>
+                        <p className="mt-2 text-[8px] text-zinc-500 italic">Sua chave é salva apenas no seu navegador.</p>
+                    </div>
+                )}
 
                 {/* Messages */}
                 <div className="flex-grow overflow-y-auto p-4 space-y-4 bg-[#F8F9FA] custom-scrollbar">

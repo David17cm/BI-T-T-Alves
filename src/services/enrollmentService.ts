@@ -22,6 +22,7 @@ export interface SupabaseEnrollment {
     entrada_vencimento: string | null;
     dia_vencimento: number;
     assinatura: string | null;
+    periodo_letivo: string | null;
     created_at: string;
 }
 
@@ -58,6 +59,7 @@ function toEnrollmentDataWithId(row: SupabaseEnrollment): EnrollmentDataWithId {
         'Entrada/1º Vencimento': row.entrada_vencimento || '',
         'Dia Vencimento': row.dia_vencimento || 0,
         'Assinatura': row.assinatura || 'PRESENCIAL',
+        'Período Letivo': row.periodo_letivo || 'Março/26',
     };
 }
 
@@ -100,6 +102,7 @@ function toSupabaseRow(data: Partial<EnrollmentData>): Record<string, unknown> {
     if (data['Entrada/1º Vencimento'] !== undefined) row.entrada_vencimento = data['Entrada/1º Vencimento'];
     if (data['Dia Vencimento'] !== undefined) row.dia_vencimento = data['Dia Vencimento'];
     if (data['Assinatura'] !== undefined) row.assinatura = data['Assinatura'];
+    if (data['Período Letivo'] !== undefined) row.periodo_letivo = data['Período Letivo'];
 
     return row;
 }

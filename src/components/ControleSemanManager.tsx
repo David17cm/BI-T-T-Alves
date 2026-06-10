@@ -3,12 +3,14 @@ import { fetchCursos, Curso } from '../services/cursosService';
 import { fetchTurmas, Turma } from '../services/turmasService';
 import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
+import { sendWeeklyReport, generateReportHTML } from '../services/emailService';
+import { toast } from 'sonner';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 import { Professor, fetchProfessores, insertProfessor, updateProfessor, deleteProfessor } from '../services/professoresService';
 import { TurmaOrg, DiaSemana, fetchTurmasOrg, upsertTurmasOrg } from '../services/orgTurmasService';
-import { ControleRow, CtrlEntry, CursosDBType, ControleRowsDBType, fetchControleSemanal, upsertControleSemanal } from '../services/controleSemanalService';
+import { ControleRow, CtrlEntry, CursosDBType, ControleRowsDBType, fetchControleSemanal, upsertControleSemanal, fetchRecentReports } from '../services/controleSemanalService';
 
 const DIAS: DiaSemana[] = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
 const DIA_LABEL: Record<DiaSemana, string> = { SEG: 'Segunda', TER: 'Terça', QUA: 'Quarta', QUI: 'Quinta', SEX: 'Sexta', SAB: 'Sábado' };
@@ -51,16 +53,30 @@ const ControleSemanalTable: React.FC<{ professores: Professor[], cursos: Curso[]
     const [dbCursos, setDbCursos] = useState<CursosDBType>({});
     const [saved, setSaved] = useState(false);
     const [semLabel, setSemLabel] = useState('');
+    const [emailModalOpen, setEmailModalOpen] = useState(false);
+    const [emailRecipients, setEmailRecipients] = useState('david.oficialstm@gmail.com, 2alves16@gmail.com');
+    const [sendingEmail, setSendingEmail] = useState(false);
+    const [saveModalOpen, setSaveModalOpen] = useState(false);
+    const [recentReports, setRecentReports] = useState<any[]>([]);
+    const [autoSendEmail, setAutoSendEmail] = useState(true);
 
-    useEffect(() => { fetchTurmas().then(d => { setTurmas(d); }).catch(() => {}); }, []);
+    const loadRecents = async () => {
+        try { const r = await fetchRecentReports(); setRecentReports(r); } catch { }
+    };
+
+    useEffect(() => { 
+        fetchTurmas().then(d => { setTurmas(d); }).catch(() => {});
+        loadRecents();
+    }, []);
 
     useEffect(() => {
         const mISO = isoDate(monday);
         if (!db[mISO]) {
             setLoading(true);
-            fetchControleSemanal(mISO).then(({ rows, cursos }) => {
+            fetchControleSemanal(mISO).then(({ rows, cursos, title }) => {
                 setDb(prev => ({ ...prev, [mISO]: rows }));
                 setDbCursos(prev => ({ ...prev, [mISO]: cursos }));
+                setSemLabel(title || '');
                 setLoading(false);
             }).catch(() => setLoading(false));
         }
@@ -138,6 +154,29 @@ const ControleSemanalTable: React.FC<{ professores: Professor[], cursos: Curso[]
     const inp = 'w-[54px] text-center px-0.5 py-1.5 text-sm font-black border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E31E24] bg-white dark:bg-zinc-900 transition-colors transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
     const inpLg = 'w-16 text-center px-2 py-1.5 text-xs font-bold border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E31E24] bg-white dark:bg-zinc-900 transition-colors text-[#231F20] dark:text-zinc-100';
 
+    const handleSendEmail = async () => {
+        if (!emailRecipients.trim()) return;
+        setSendingEmail(true);
+        try {
+            const recipients = emailRecipients.split(',').map(e => e.trim()).filter(Boolean);
+            const html = generateReportHTML(labelSemana(monday), semLabel, cursoList, dbCursos, mondayISO);
+            
+            await sendWeeklyReport({
+                recipients,
+                subject: `📊 Relatório: Controle Semanal — ${labelSemana(monday)}`,
+                html
+            });
+            
+            toast.success('Relatório enviado com sucesso!');
+            setEmailModalOpen(false);
+        } catch (err: any) {
+            console.error(err);
+            toast.error(err.message || 'Erro ao enviar e-mail. Verifique se a RESEND_API_KEY está configurada.');
+        } finally {
+            setSendingEmail(false);
+        }
+    };
+
     const uniqueCursosDisp = Array.from(new Set(turmas.map(t => t.curso_nome).filter(Boolean)));
 
     return (
@@ -162,14 +201,14 @@ const ControleSemanalTable: React.FC<{ professores: Professor[], cursos: Curso[]
                         </button>
                     </div>
                     <button onClick={() => setMonday(getMondayOf(new Date()))} className="px-4 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 font-black uppercase text-[9px] tracking-widest rounded-xl hover:bg-zinc-200">Hoje</button>
-                    <button onClick={async () => {
-                        try {
-                            await upsertControleSemanal(mondayISO, db[mondayISO] || [], dbCursos[mondayISO] || {});
-                            setSaved(true); setTimeout(() => setSaved(false), 2500);
-                        } catch(e) { alert('Erro ao salvar no banco de dados.'); }
-                    }}
+                    <button onClick={() => setSaveModalOpen(true)}
                         className={`flex items-center gap-2 px-5 py-2.5 font-black uppercase text-[10px] tracking-widest rounded-xl transition-all shadow-sm ${saved ? 'bg-green-600 text-white' : 'bg-[#231F20] text-white hover:bg-zinc-700'}`}>
                         {saved ? <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>Salvo!</> : 'Salvar'}
+                    </button>
+                    <button onClick={() => setEmailModalOpen(true)}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-[#E31E24] text-white font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-red-700 transition-all shadow-sm">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                        Enviar E-mail
                     </button>
                 </div>
             </div>
@@ -367,6 +406,148 @@ const ControleSemanalTable: React.FC<{ professores: Professor[], cursos: Curso[]
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Modal de Envio de E-mail */}
+            {emailModalOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border-t-8 border-[#E31E24] animate-in fade-in zoom-in duration-300">
+                        <div className="p-8">
+                            <h3 className="text-xl font-black text-[#231F20] dark:text-zinc-100 uppercase tracking-tighter mb-2">Enviar <span className="text-[#E31E24]">Relatório</span></h3>
+                            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-6">O relatório será enviado em formato HTML premium.</p>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1.5 ml-1">Destinatários (separados por vírgula)</label>
+                                    <textarea 
+                                        rows={3}
+                                        value={emailRecipients}
+                                        onChange={e => setEmailRecipients(e.target.value)}
+                                        className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-700 rounded-2xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#E31E24]/30"
+                                        placeholder="ex: david@ttcursos.com.br, coordenacao@ttcursos.com.br"
+                                    />
+                                </div>
+
+                                <div className="bg-zinc-50 dark:bg-zinc-950/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800">
+                                    <p className="text-[9px] font-black text-[#231F20] dark:text-zinc-100 uppercase tracking-widest mb-1">Resumo do Envio:</p>
+                                    <p className="text-[10px] font-bold text-zinc-500 italic">Semana: {labelSemana(monday)}</p>
+                                    <p className="text-[10px] font-bold text-zinc-500 italic">Linhas de Controle: {getWeek().length}</p>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 mt-8">
+                                <button 
+                                    onClick={() => setEmailModalOpen(false)}
+                                    className="flex-1 py-3.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-zinc-200 transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={handleSendEmail}
+                                    disabled={sendingEmail}
+                                    className="flex-[2] py-3.5 bg-[#E31E24] text-white font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-red-700 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {sendingEmail ? (
+                                        <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Enviando...</>
+                                    ) : (
+                                        <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg> Disparar Agora</>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {recentReports.length > 0 && (
+                <div className="w-full bg-white dark:bg-zinc-900 transition-colors rounded-[2rem] shadow-sm overflow-hidden p-6 mt-4">
+                    <h4 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Acesso Rápido: Últimos Relatórios
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                        {recentReports.map((r) => (
+                            <button 
+                                key={r.monday_iso}
+                                onClick={() => {
+                                    setMonday(new Date(r.monday_iso + 'T12:00:00'));
+                                }}
+                                className={`p-3 rounded-2xl border transition-all text-left hover:scale-[1.02] active:scale-95 ${mondayISO === r.monday_iso ? 'bg-[#E31E24] border-[#E31E24] text-white' : 'bg-zinc-50 dark:bg-zinc-950/50 border-zinc-100 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300'}`}
+                            >
+                                <p className="text-[10px] font-black uppercase tracking-tighter truncate">{r.title || 'Relatório Sem Título'}</p>
+                                <p className="text-[8px] font-bold opacity-70 mt-1 uppercase">{r.monday_iso}</p>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {/* Modal de Salvamento com Nome */}
+            {saveModalOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden border-t-8 border-[#231F20] animate-in fade-in zoom-in duration-300">
+                        <div className="p-8">
+                            <h3 className="text-xl font-black text-[#231F20] dark:text-zinc-100 uppercase tracking-tighter mb-2 italic">Salvar <span className="text-[#E31E24]">Arquivo</span></h3>
+                            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-6">Como você quer identificar este controle?</p>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1.5 ml-1">Nome do Relatório</label>
+                                    <input 
+                                        type="text"
+                                        value={semLabel}
+                                        onChange={e => setSemLabel(e.target.value)}
+                                        className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-700 rounded-2xl text-xs font-black uppercase focus:outline-none focus:ring-2 focus:ring-[#E31E24]/30"
+                                        placeholder="Ex: 1ª Semana - Março"
+                                    />
+                                </div>
+
+                                <label className="flex items-center gap-3 p-4 bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-700 rounded-2xl cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all select-none">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={autoSendEmail} 
+                                        onChange={e => setAutoSendEmail(e.target.checked)}
+                                        className="w-5 h-5 rounded-lg border-zinc-300 text-[#E31E24] focus:ring-[#E31E24]"
+                                    />
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-[#231F20] dark:text-zinc-100">Disparar e-mail ao salvar</span>
+                                        <span className="text-[8px] font-bold text-zinc-400 uppercase tracking-tighter">Enviar relatório para: {emailRecipients.split(',')[0]}...</span>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div className="flex gap-3 mt-8">
+                                <button 
+                                    onClick={() => setSaveModalOpen(false)}
+                                    className="flex-1 py-3.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-zinc-200 transition-all"
+                                >
+                                    Voltar
+                                </button>
+                                <button 
+                                    onClick={async () => {
+                                        try {
+                                            setSaveModalOpen(false);
+                                            await upsertControleSemanal(mondayISO, db[mondayISO] || [], dbCursos[mondayISO] || {}, semLabel);
+                                            setSaved(true); 
+                                            setTimeout(() => setSaved(false), 2500);
+                                            loadRecents();
+                                            toast.success('Relatório salvo com sucesso!');
+                                            
+                                            if (autoSendEmail) {
+                                                handleSendEmail();
+                                            }
+                                        } catch(e: any) { 
+                                            toast.error('Erro ao salvar: ' + e.message);
+                                        }
+                                    }}
+                                    className="flex-[2] py-3.5 bg-[#231F20] text-white font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-zinc-800 transition-all shadow-lg flex items-center justify-center gap-2"
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                                    Confirmar e Salvar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
@@ -849,7 +1030,7 @@ const ControleSemanManager: React.FC = () => {
             for (const week of Object.keys(cStore)) {
                 const oldRows = cStore[week] || [];
                 const mappedRows = oldRows.map((r: any) => ({ ...r, professorId: idMap[r.professorId] || r.professorId }));
-                await upsertControleSemanal(week, mappedRows, ccStore[week] || {});
+                await upsertControleSemanal(week, mappedRows, ccStore[week] || {}, '');
             }
 
             localStorage.removeItem('tt_professores_v1');

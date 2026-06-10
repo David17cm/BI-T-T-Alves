@@ -45,6 +45,7 @@ const App: React.FC = () => {
 
   const [allData, setAllData] = useState<EnrollmentDataWithId[]>([]);
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('Todos');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +153,11 @@ const App: React.FC = () => {
     return classes.sort();
   }, [allData]);
 
+  const availablePeriods = useMemo(() => {
+    const periods = new Set(allData.map(d => d['Período Letivo'] || 'Março/26'));
+    return Array.from(periods).sort();
+  }, [allData]);
+
   // Buscar dados do Supabase com paginação automática
   const loadData = useCallback(async () => {
     try {
@@ -219,16 +225,20 @@ const App: React.FC = () => {
   // Friendly turma name from compound key
   const getTurmaName = (compoundKey: string) => compoundKey.split('|')[1] || compoundKey;
 
-  // Recalcula estatísticas sempre que o dado bruto ou as turmas selecionadas mudarem
+  // Recalcula estatísticas sempre que o dado bruto, as turmas selecionadas ou o período mudarem
   useEffect(() => {
     if (allData.length > 0) {
+      const filteredByPeriod = selectedPeriod === 'Todos' 
+        ? allData 
+        : allData.filter(d => (d['Período Letivo'] || 'Março/26') === selectedPeriod);
+
       const filtered = selectedClasses.length > 0
-        ? allData.filter(d => selectedClasses.includes(`${d.Pacote}|${d.Turma}`))
-        : allData;
+        ? filteredByPeriod.filter(d => selectedClasses.includes(`${d.Pacote}|${d.Turma}`))
+        : filteredByPeriod;
 
       setStats(getDashboardStats(filtered));
     }
-  }, [allData, selectedClasses]);
+  }, [allData, selectedClasses, selectedPeriod]);
 
   const filteredDailyData = useMemo(() => {
     if (!stats) return [];
@@ -358,17 +368,13 @@ const App: React.FC = () => {
                 Matrículas
               </button>
 
-              <button onClick={() => setActiveTab('alunos')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'alunos' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white dark:bg-zinc-900 transition-colors/5 hover:text-white'}`}>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                Alunos
-              </button>
 
               <div className="mt-4 pt-4 border-t border-white/10">
                 <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-2 px-4">Cadastros</p>
               </div>
               <button onClick={() => setActiveTab('pedagogo')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'pedagogo' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white dark:bg-zinc-900 transition-colors/5 hover:text-white'}`}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-                Pedagogo
+                Pedagógico
               </button>
               <button onClick={() => setActiveTab('cursos')} className={`w-full flex items-center gap-4 px-6 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'cursos' ? 'bg-[#E31E24] text-white shadow-lg' : 'text-zinc-400 hover:bg-white dark:bg-zinc-900 transition-colors/5 hover:text-white'}`}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
@@ -453,57 +459,7 @@ const App: React.FC = () => {
             </>
           )}
 
-          {!isVendedor && Object.keys(cursoTurmaMap).length > 0 && (
-            <div className="mt-8 px-4 pt-4 border-t border-white/10 pb-20">
-              <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-4">Filtrar por Curso</p>
-              <div className="space-y-1">
-                {Object.keys(cursoTurmaMap).sort().map(cursoName => {
-                  const cursoTurmas = cursoTurmaMap[cursoName];
-                  const selectedCount = cursoTurmas.filter(t => selectedClasses.includes(t)).length;
-                  const allSelected = selectedCount === cursoTurmas.length;
-                  const someSelected = selectedCount > 0 && !allSelected;
-                  const isExpanded = expandedCursos.includes(cursoName);
 
-                  return (
-                    <div key={cursoName}>
-                      {/* Curso Header */}
-                      <div className="flex items-center gap-2 group">
-                        <button onClick={() => toggleCurso(cursoName)} className="flex items-center gap-2 flex-grow py-2 cursor-pointer">
-                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${allSelected ? 'bg-[#E31E24] border-[#E31E24]' :
-                            someSelected ? 'bg-[#E31E24]/40 border-[#E31E24]' :
-                              'border-white/20 group-hover:border-white/40'
-                            }`}>
-                            {(allSelected || someSelected) && <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>}
-                          </div>
-                          <span className={`text-[10px] font-black uppercase truncate transition-all ${allSelected || someSelected ? 'text-white' : 'text-zinc-500 group-hover:text-zinc-300'
-                            }`}>{cursoName}</span>
-                        </button>
-                        <button onClick={() => toggleExpandCurso(cursoName)} className="p-1 text-zinc-500 hover:text-white transition-all">
-                          <svg className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                        </button>
-                        <span className="text-[8px] text-zinc-600 font-bold">{selectedCount}/{cursoTurmas.length}</span>
-                      </div>
-
-                      {/* Turmas Dropdown */}
-                      {isExpanded && (
-                        <div className="ml-6 space-y-1 pb-2">
-                          {cursoTurmas.sort().map(compoundKey => (
-                            <label key={compoundKey} className="flex items-center gap-2 cursor-pointer group py-1">
-                              <input type="checkbox" className="hidden" checked={selectedClasses.includes(compoundKey)} onChange={() => toggleClass(compoundKey)} />
-                              <div className={`w-3 h-3 rounded border-2 flex items-center justify-center transition-all ${selectedClasses.includes(compoundKey) ? 'bg-[#E31E24] border-[#E31E24]' : 'border-white/15 group-hover:border-white/30'}`}>
-                                {selectedClasses.includes(compoundKey) && <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>}
-                              </div>
-                              <span className={`text-[9px] font-semibold truncate transition-all ${selectedClasses.includes(compoundKey) ? 'text-zinc-300' : 'text-zinc-600 group-hover:text-zinc-400'}`}>{getTurmaName(compoundKey)}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </nav>
         {/* User Info & Settings */}
         <div className="p-4 border-t border-white/10 flex flex-col gap-2">
@@ -548,17 +504,17 @@ const App: React.FC = () => {
       {/* OVERLAY MOBILE */}
       {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
-      {/* AI BUTTON (FLOATING) - Oculto temporariamente */}
-      {/* <button
+      {/* AI BUTTON (FLOATING) */}
+      <button
         onClick={() => setIsAIOpen(true)}
         className="fixed bottom-6 right-6 z-50 bg-[#231F20] text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform border-2 border-[#E31E24] animate-bounce"
         title="Falar com IA"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-      </button> */}
+      </button>
 
-      {/* AI COMPONENT - Oculto temporariamente */}
-      {/* <AIAssistant isOpen={isAIOpen} onClose={() => setIsAIOpen(false)} stats={stats} /> */}
+      {/* AI COMPONENT */}
+      <AIAssistant isOpen={isAIOpen} onClose={() => setIsAIOpen(false)} stats={stats} />
 
       <main className="flex-1 p-4 md:p-10 overflow-y-auto custom-scrollbar w-full">
 
@@ -616,12 +572,40 @@ const App: React.FC = () => {
         {stats && !isVendedor && (activeTab === 'overview' || activeTab === 'commercial') && (
           <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-700">
             <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-              <h2 className="text-4xl font-black text-[#231F20] dark:text-zinc-100 uppercase tracking-tighter italic leading-none">
-                {activeTab === 'overview' ? 'BI' : 'Desempenho'} <span className="text-[#E31E24]">{activeTab === 'overview' ? 'ALVES' : 'Comercial'}</span>
-              </h2>
-              <div className="bg-[#231F20] text-white px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest shadow-lg">
-                Turmas: <span className="text-[#FFF200]">{selectedClasses.length > 0 ? selectedClasses.join(', ') : 'Todas'}</span>
+              <div className="flex flex-col gap-2">
+                <h2 className="text-4xl font-black text-[#231F20] dark:text-zinc-100 uppercase tracking-tighter italic leading-none">
+                  {activeTab === 'overview' ? 'BI' : 'Desempenho'} <span className="text-[#E31E24]">{activeTab === 'overview' ? 'ALVES' : 'Comercial'}</span>
+                </h2>
+                
+                {activeTab === 'overview' && (
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <button
+                      onClick={() => setSelectedPeriod('Todos')}
+                      className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${
+                        selectedPeriod === 'Todos' 
+                          ? 'bg-[#E31E24] text-white border-[#E31E24] shadow-md' 
+                          : 'bg-transparent text-zinc-500 border-zinc-300 dark:border-zinc-700 hover:border-[#E31E24] hover:text-[#E31E24]'
+                      }`}
+                    >
+                      Todos
+                    </button>
+                    {availablePeriods.map(period => (
+                      <button
+                        key={period}
+                        onClick={() => setSelectedPeriod(period)}
+                        className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${
+                          selectedPeriod === period 
+                            ? 'bg-[#E31E24] text-white border-[#E31E24] shadow-md' 
+                            : 'bg-transparent text-zinc-500 border-zinc-300 dark:border-zinc-700 hover:border-[#E31E24] hover:text-[#E31E24]'
+                        }`}
+                      >
+                        {period}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

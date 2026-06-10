@@ -5,6 +5,7 @@ export interface Turma {
     nome: string;
     curso_id: number | null;
     curso_nome?: string;
+    periodo_letivo: string | null;
     data_inicio: string | null;
     data_fim: string | null;
     status: string;

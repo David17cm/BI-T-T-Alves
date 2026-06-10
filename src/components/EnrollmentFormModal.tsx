@@ -31,6 +31,7 @@ const DEFAULT_VALUES: EnrollmentData = {
     'Entrada/1º Vencimento': '',
     'Dia Vencimento': 0,
     'Assinatura': 'PRESENCIAL',
+    'Período Letivo': 'Março/26',
 };
 
 // Convert DD/MM/YYYY → YYYY-MM-DD for <input type="date">
@@ -104,6 +105,14 @@ const EnrollmentFormModal: React.FC<Props> = ({ enrollment, onSave, onClose, sav
                         <div>
                             <label className={labelCls}>Data Matrícula</label>
                             <input type="date" value={dateValue} onChange={e => setDateValue(e.target.value)} className={inputCls} />
+                        </div>
+                        <div>
+                            <label className={labelCls}>Período Letivo</label>
+                            <select value={form['Período Letivo']} onChange={e => set('Período Letivo', e.target.value)} className={inputCls}>
+                                <option value="Março/26">Março/26</option>
+                                <option value="Julho/26">Julho/26</option>
+                                <option value="Setembro/26">Setembro/26</option>
+                            </select>
                         </div>
                         <div>
                             <label className={labelCls}>Pacote (Curso)</label>

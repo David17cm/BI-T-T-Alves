@@ -18,6 +18,7 @@ export interface EnrollmentData {
   "Entrada/1º Vencimento": string;
   "Dia Vencimento": number;
   "Assinatura": string;
+  "Período Letivo": string;
 }
 
 export interface AttendantMetric {

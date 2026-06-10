@@ -180,6 +180,7 @@ const EnrollmentTable: React.FC<Props> = ({ data, onDataChanged, isAdmin = false
                         <thead>
                             <tr className="bg-[#231F20] dark:bg-black text-white">
                                 <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest">Aluno</th>
+                                <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest">Período</th>
                                 <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest">Pacote</th>
                                 <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest">Turma</th>
                                 <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest">Vendedor</th>
@@ -192,7 +193,7 @@ const EnrollmentTable: React.FC<Props> = ({ data, onDataChanged, isAdmin = false
                         <tbody>
                             {filtered.length === 0 && (
                                 <tr>
-                                    <td colSpan={8} className="px-6 py-16 text-center">
+                                    <td colSpan={9} className="px-6 py-16 text-center">
                                         <p className="text-zinc-400 font-bold uppercase tracking-widest text-[10px]">
                                             {search ? 'Nenhum resultado encontrado.' : 'Nenhuma matrícula cadastrada.'}
                                         </p>
@@ -204,6 +205,9 @@ const EnrollmentTable: React.FC<Props> = ({ data, onDataChanged, isAdmin = false
                                     <td className="px-6 py-4">
                                         <p className="font-black text-sm text-[#231F20] dark:text-zinc-100">{item.Aluno}</p>
                                         <p className="text-[10px] text-zinc-400 font-semibold">{item['Data Matrícula']}</p>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className="inline-block bg-zinc-200 dark:bg-zinc-700 text-[#231F20] dark:text-white text-[9px] font-black px-2.5 py-1 rounded-full uppercase">{item['Período Letivo']}</span>
                                     </td>
                                     <td className="px-6 py-4 text-xs font-bold text-[#231F20] dark:text-zinc-200">{item.Pacote}</td>
                                     <td className="px-6 py-4">
@@ -273,6 +277,7 @@ const EnrollmentTable: React.FC<Props> = ({ data, onDataChanged, isAdmin = false
                                         <div className="flex items-center gap-2 mt-2">
                                             <span className="text-xs font-bold text-[#E31E24]">{item.Pacote}</span>
                                             <span className="inline-block bg-[#231F20] dark:bg-zinc-800 text-white text-[9px] font-black px-2 py-0.5 rounded-full">{item.Turma}</span>
+                                            <span className="inline-block bg-zinc-200 dark:bg-zinc-700 text-[#231F20] dark:text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">{item['Período Letivo']}</span>
                                         </div>
                                     </div>
                                     <div className="flex flex-col items-end gap-2">

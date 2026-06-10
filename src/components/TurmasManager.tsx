@@ -3,7 +3,7 @@ import { Turma, TurmaInput, fetchTurmas, insertTurma, updateTurma, deleteTurma }
 import { Curso, fetchCursos } from '../services/cursosService';
 import { supabase } from '../services/supabaseClient';
 
-const EMPTY: TurmaInput = { nome: '', curso_id: null, data_inicio: null, data_fim: null, status: 'ATIVA' };
+const EMPTY: TurmaInput = { nome: '', curso_id: null, periodo_letivo: 'Março/26', data_inicio: null, data_fim: null, status: 'ATIVA' };
 
 const TurmasManager: React.FC = () => {
     const [data, setData] = useState<Turma[]>([]);
@@ -12,6 +12,7 @@ const TurmasManager: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [selectedCourse, setSelectedCourse] = useState<string>('');
+    const [selectedPeriod, setSelectedPeriod] = useState<string>('');
     const [expandedTurma, setExpandedTurma] = useState<number | null>(null);
 
     const [modalOpen, setModalOpen] = useState(false);
@@ -44,7 +45,8 @@ const TurmasManager: React.FC = () => {
     const filtered = data.filter(d => {
         const matchSearch = d.nome.toLowerCase().includes(search.toLowerCase()) || (d.curso_nome || '').toLowerCase().includes(search.toLowerCase());
         const matchCourse = selectedCourse ? d.curso_nome === selectedCourse : true;
-        return matchSearch && matchCourse;
+        const matchPeriod = selectedPeriod ? d.periodo_letivo === selectedPeriod || (!d.periodo_letivo && selectedPeriod === 'Março/26') : true;
+        return matchSearch && matchCourse && matchPeriod;
     });
 
     const getStudents = (turmaNome: string, cursoNome: string) => enrollments.filter(e => e.turma === turmaNome && (e.pacote === cursoNome || cursoNome === '—' || !cursoNome));
@@ -52,7 +54,7 @@ const TurmasManager: React.FC = () => {
     const openNew = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); setError(null); };
     const openEdit = (t: Turma) => {
         setEditing(t);
-        setForm({ nome: t.nome, curso_id: t.curso_id, data_inicio: t.data_inicio, data_fim: t.data_fim, status: t.status });
+        setForm({ nome: t.nome, curso_id: t.curso_id, periodo_letivo: t.periodo_letivo || 'Março/26', data_inicio: t.data_inicio, data_fim: t.data_fim, status: t.status });
         setModalOpen(true); setError(null);
     };
 
@@ -96,6 +98,12 @@ const TurmasManager: React.FC = () => {
                         <option value="">Todos os Cursos</option>
                         {cursos.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
                     </select>
+                    <select value={selectedPeriod} onChange={e => setSelectedPeriod(e.target.value)} className="px-4 py-3 bg-white dark:bg-zinc-900 transition-colors border border-zinc-200 dark:border-zinc-700 transition-colors rounded-xl text-sm font-semibold text-[#231F20] dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-[#E31E24] w-40">
+                        <option value="">Todos Períodos</option>
+                        <option value="Março/26">Março/26</option>
+                        <option value="Julho/26">Julho/26</option>
+                        <option value="Setembro/26">Setembro/26</option>
+                    </select>
                     <button onClick={openNew} className="flex items-center gap-2 px-5 py-3 bg-[#E31E24] text-white font-black uppercase tracking-widest text-[10px] rounded-xl hover:bg-red-700 transition-all shadow-lg">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4" /></svg>
                         Nova Turma
@@ -113,6 +121,7 @@ const TurmasManager: React.FC = () => {
                         <thead><tr className="bg-[#231F20] text-white">
                             <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest">Turma</th>
                             <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest">Curso</th>
+                            <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest">Período</th>
                             <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest">Status</th>
                             <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-center">Alunos</th>
                             <th className="px-6 py-4 text-[9px] font-black uppercase tracking-widest text-center">Ações</th>
@@ -132,6 +141,7 @@ const TurmasManager: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4"><span className="inline-block bg-[#231F20] text-white text-[9px] font-black px-2.5 py-1 rounded-full">{t.curso_nome}</span></td>
+                                            <td className="px-6 py-4"><span className="inline-block bg-zinc-200 dark:bg-zinc-800 transition-colors text-zinc-700 dark:text-zinc-300 text-[9px] font-black px-2.5 py-1 rounded-full">{t.periodo_letivo || 'Março/26'}</span></td>
                                             <td className="px-6 py-4"><span className={`inline-block text-[9px] font-black px-2.5 py-1 rounded-full uppercase ${statusColor(t.status)}`}>{t.status}</span></td>
                                             <td className="px-6 py-4 text-center">
                                                 <span className="inline-block bg-zinc-200 text-zinc-700 text-[10px] font-black px-2.5 py-1 rounded-full">{students.length}</span>
@@ -201,6 +211,15 @@ const TurmasManager: React.FC = () => {
                                 <select value={form.curso_id ?? ''} onChange={e => setForm(f => ({ ...f, curso_id: e.target.value ? Number(e.target.value) : null }))} className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-950/50 transition-colors border border-zinc-200 dark:border-zinc-700 transition-colors rounded-xl text-sm font-semibold text-[#231F20] dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-[#E31E24]">
                                     <option value="">Selecione um curso</option>
                                     {cursos.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Período Letivo</label>
+                                <select value={form.periodo_letivo || 'Março/26'} onChange={e => setForm(f => ({ ...f, periodo_letivo: e.target.value }))} className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-950/50 transition-colors border border-zinc-200 dark:border-zinc-700 transition-colors rounded-xl text-sm font-semibold text-[#231F20] dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-[#E31E24]">
+                                    <option value="Março/26">Março/26</option>
+                                    <option value="Julho/26">Julho/26</option>
+                                    <option value="Setembro/26">Setembro/26</option>
                                 </select>
                             </div>
 
